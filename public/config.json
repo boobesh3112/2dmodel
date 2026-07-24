@@ -1,0 +1,15 @@
+{
+  "modelsDirectory": "/models",
+  "autoScan": true,
+  "theme": "dark",
+  "defaultBackground": "grid",
+  "showFPS": true,
+  "autoFit": true,
+  "defaultScale": 0.25,
+  "wheelZoom": true,
+  "dragEnabled": true,
+  "sidebar": {
+    "defaultView": "grid",
+    "defaultSort": "name"
+  }
+}
