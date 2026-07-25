@@ -17,17 +17,15 @@
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <script
-      src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"
-      crossorigin="anonymous"
-    ></script>
-    <script
-      src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"
-      crossorigin="anonymous"
-    ></script>
+    <!--
+      NOTE: This file exists for documentation / tooling only.
+      The runtime HTML shell is rendered by TanStack Start (src/routes/__root.tsx).
+      The Live2D SDK <script> tags and the app entry are injected there — do not
+      add a <script src="/src/start.ts"> here or the deployed static file will
+      404 that path and render a blank page.
+    -->
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/start.ts"></script>
   </body>
 </html>
