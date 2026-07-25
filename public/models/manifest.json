@@ -1,8 +1,11 @@
 {
-  "generatedAt": 1784740569505,
+  {
+  "generatedAt": 1784951413802,
   "modelsDirectory": "/models",
-  "count": 12,
-  "models": [
+  "count": 0,
+  "models": []
+}
+[
     {
       "id": "epsilon_ja",
       "folderName": "epsilon_ja",
