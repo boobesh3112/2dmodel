@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+if (process.env.NETLIFY) {
+  console.log('Netlify Nitro output detected. Skipping the dist/server preview shim.');
+  process.exit(0);
+}
+
 const distServerDir = path.join(process.cwd(), 'dist', 'server');
 const targetFile = path.join(distServerDir, 'server.js');
 
