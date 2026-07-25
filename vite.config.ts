@@ -13,14 +13,17 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Let nitro auto-detect the deployment target (Vercel, Netlify, etc.) via env vars
+  // (VERCEL=1, NETLIFY=true, ...). Falls back to cloudflare-module in the Lovable sandbox.
   nitro: {
-    output: {
-      dir: "dist",
-      serverDir: "dist/server",
-      publicDir: "dist/client",
-    },
+    preset:
+      process.env.NITRO_PRESET ||
+      (process.env.VERCEL ? "vercel" : undefined) ||
+      (process.env.NETLIFY ? "netlify" : undefined) ||
+      "cloudflare-module",
   },
   vite: {
     plugins: [modelsManifestPlugin()],
   },
 });
+
