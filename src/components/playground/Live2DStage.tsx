@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
-import { usePlayground, emptyInfo, type ActiveSource } from "@/context/PlaygroundContext";
+import {
+  usePlayground,
+  emptyInfo,
+  type ActiveSource,
+  type ExtraCharacter,
+} from "@/context/PlaygroundContext";
 import { buildResolvedSettings } from "@/lib/live2d/loader";
 import { toast } from "sonner";
 
@@ -8,17 +13,31 @@ type StageRuntime = {
   model: any;
   cleanup: () => void;
   overlay?: any;
+  extras: Map<string, any>;
 };
 
 export default function Live2DStage() {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<StageRuntime | null>(null);
   const bootedRef = useRef(false);
-  const { source, state, setInfo, background, bgColor, debug, config } = usePlayground();
+  const {
+    source,
+    extras,
+    updateExtra,
+    state,
+    setInfo,
+    background,
+    bgColor,
+    bgImageUrl,
+    bgImageFit,
+    bgImageOpacity,
+    debug,
+    config,
+  } = usePlayground();
 
   // Lazy-boot Pixi only when a model is requested (keeps GPU idle at rest)
   useEffect(() => {
-    if (!source || bootedRef.current) return;
+    if ((!source && extras.length === 0) || bootedRef.current) return;
     let disposed = false;
     bootedRef.current = true;
 
@@ -64,7 +83,7 @@ export default function Live2DStage() {
         }
       });
 
-      runtimeRef.current = { app, model: null, cleanup: () => {}, overlay };
+      runtimeRef.current = { app, model: null, cleanup: () => {}, overlay, extras: new Map() };
       (window as any).__l2dApp = app;
     })();
 
@@ -72,7 +91,7 @@ export default function Live2DStage() {
       disposed = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
+  }, [source, extras.length]);
 
   // Full teardown on unmount only (component lifetime)
   useEffect(() => {
@@ -271,6 +290,76 @@ export default function Live2DStage() {
     }
   }, [state]);
 
+  // Sync extra characters -> pixi stage
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Ensure app is booted (only meaningful when a primary source triggered boot,
+      // but we also boot here if the user adds an extra with no primary).
+      if (!runtimeRef.current && extras.length > 0) {
+        // borrow the boot path by pretending a source is required
+        // Actually the primary boot only runs when `source` is set. We only load
+        // extras when the stage is already alive.
+      }
+      for (let i = 0; i < 100 && extras.length > 0 && !runtimeRef.current; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      const rt = runtimeRef.current;
+      if (!rt) return;
+
+      // Remove characters no longer present
+      const wanted = new Set(extras.map((e) => e.instanceId));
+      for (const [id, m] of rt.extras.entries()) {
+        if (!wanted.has(id)) {
+          try {
+            rt.app.stage.removeChild(m);
+            m.destroy({ children: true, texture: true, baseTexture: true });
+          } catch {}
+          rt.extras.delete(id);
+        }
+      }
+
+      // Add newly present characters
+      const { Live2DModel } = await import("pixi-live2d-display");
+      for (const ex of extras) {
+        if (rt.extras.has(ex.instanceId)) continue;
+        try {
+          const model: any = await Live2DModel.from(ex.entry.settingsUrl, { autoInteract: false });
+          if (cancelled) {
+            model.destroy({ children: true, texture: true, baseTexture: true });
+            continue;
+          }
+          model.anchor.set(0.5, 0.5);
+          model.scale.set(ex.scale);
+          model.x = rt.app.renderer.width / 2 + ex.x;
+          model.y = rt.app.renderer.height / 2 + ex.y;
+          rt.app.stage.addChild(model);
+          rt.extras.set(ex.instanceId, model);
+          wireExtraDragging(model, rt.app, ex.instanceId, (patch) =>
+            updateExtra(ex.instanceId, patch),
+          );
+        } catch (err: any) {
+          console.warn("[live2d] extra failed", err);
+          toast.error(`Failed to load ${ex.entry.modelName}`, {
+            description: err?.message ?? String(err),
+          });
+        }
+      }
+
+      // Apply transforms to existing extras
+      for (const ex of extras) {
+        const m = rt.extras.get(ex.instanceId);
+        if (!m) continue;
+        m.scale.set(ex.scale);
+        m.x = rt.app.renderer.width / 2 + ex.x;
+        m.y = rt.app.renderer.height / 2 + ex.y;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [extras, updateExtra]);
+
   // Debug overlay
   useEffect(() => {
     const draw = () => {
@@ -330,6 +419,8 @@ export default function Live2DStage() {
         return {
           background: `radial-gradient(circle at 30% 20%, ${bgColor}, transparent 60%), linear-gradient(135deg, oklch(0.18 0.05 300), oklch(0.22 0.05 200))`,
         };
+      case "image":
+        return { background: "#0a0d14" };
       case "checker":
         return {};
       case "grid":
@@ -341,7 +432,26 @@ export default function Live2DStage() {
   const bgClass =
     background === "checker" ? "checker-bg" : background === "grid" ? "grid-bg" : "";
 
-  return <div ref={hostRef} className={`absolute inset-0 ${bgClass}`} style={bgStyle} />;
+  const imageObjectFit: React.CSSProperties["objectFit"] =
+    bgImageFit === "fill" ? "fill" : bgImageFit === "contain" ? "contain" : bgImageFit === "center" ? "none" : "cover";
+
+  return (
+    <div ref={hostRef} className={`absolute inset-0 ${bgClass}`} style={bgStyle}>
+      {background === "image" && bgImageUrl && (
+        <img
+          src={bgImageUrl}
+          alt=""
+          draggable={false}
+          crossOrigin="anonymous"
+          onError={() => {
+            /* silently ignore — user may paste an invalid URL */
+          }}
+          className="pointer-events-none absolute inset-0 h-full w-full select-none"
+          style={{ objectFit: imageObjectFit, opacity: bgImageOpacity }}
+        />
+      )}
+    </div>
+  );
 }
 
 async function resolveSource(source: NonNullable<ActiveSource>): Promise<any> {
@@ -377,6 +487,38 @@ function wireDragging(model: any, app: any) {
   const stop = () => (dragging = false);
   app.stage.interactive = true;
   app.stage.hitArea = app.screen;
+  app.stage.on("pointerup", stop);
+  app.stage.on("pointerupoutside", stop);
+  app.stage.on("pointermove", (e: any) => {
+    if (!dragging) return;
+    model.x = e.data.global.x - offset.x;
+    model.y = e.data.global.y - offset.y;
+  });
+}
+
+function wireExtraDragging(
+  model: any,
+  app: any,
+  _id: string,
+  onChange: (patch: { x?: number; y?: number }) => void,
+) {
+  let dragging = false;
+  const offset = { x: 0, y: 0 };
+  model.interactive = true;
+  model.buttonMode = true;
+  model.on("pointerdown", (e: any) => {
+    dragging = true;
+    offset.x = e.data.global.x - model.x;
+    offset.y = e.data.global.y - model.y;
+  });
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    onChange({
+      x: model.x - app.renderer.width / 2,
+      y: model.y - app.renderer.height / 2,
+    });
+  };
   app.stage.on("pointerup", stop);
   app.stage.on("pointerupoutside", stop);
   app.stage.on("pointermove", (e: any) => {
