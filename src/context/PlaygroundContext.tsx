@@ -3,7 +3,9 @@ import type { LoadedModelFiles } from "@/lib/live2d/types";
 import type { ModelManifestEntry } from "@/lib/live2d/manifest";
 import { loadAppConfig, defaultConfig, type AppConfig } from "@/lib/config";
 
-export type Background = "grid" | "checker" | "solid" | "transparent" | "gradient";
+export type Background = "grid" | "checker" | "solid" | "transparent" | "gradient" | "image";
+export type BgImageFit = "cover" | "contain" | "fill" | "center";
+
 export type DebugFlags = {
   showHitAreas: boolean;
   showBounds: boolean;
@@ -36,6 +38,15 @@ export type ActiveSource =
   | { kind: "url"; entry: ModelManifestEntry }
   | null;
 
+export type ExtraCharacter = {
+  /** stable per-instance id (allows loading the same entry twice) */
+  instanceId: string;
+  entry: ModelManifestEntry;
+  scale: number;
+  x: number;
+  y: number;
+};
+
 type Ctx = {
   config: AppConfig;
 
@@ -43,6 +54,13 @@ type Ctx = {
   loadFromFiles: (loaded: LoadedModelFiles) => void;
   loadFromEntry: (entry: ModelManifestEntry) => void;
   unload: () => void;
+
+  /** Extra characters displayed alongside the primary model. */
+  extras: ExtraCharacter[];
+  addExtra: (entry: ModelManifestEntry) => void;
+  removeExtra: (instanceId: string) => void;
+  updateExtra: (instanceId: string, patch: Partial<Omit<ExtraCharacter, "instanceId" | "entry">>) => void;
+  clearExtras: () => void;
 
   activeName: string;
   activeCubism: 2 | 3 | 4 | null;
@@ -59,6 +77,12 @@ type Ctx = {
   setBackground: (b: Background) => void;
   bgColor: string;
   setBgColor: (c: string) => void;
+  bgImageUrl: string;
+  setBgImageUrl: (v: string) => void;
+  bgImageFit: BgImageFit;
+  setBgImageFit: (v: BgImageFit) => void;
+  bgImageOpacity: number;
+  setBgImageOpacity: (v: number) => void;
 
   debug: DebugFlags;
   setDebug: React.Dispatch<React.SetStateAction<DebugFlags>>;
@@ -116,6 +140,7 @@ const PlaygroundCtx = createContext<Ctx | null>(null);
 
 const LS_RECENT = "l2d.recent";
 const LS_FAVORITES = "l2d.favorites";
+const LS_BG_IMAGE = "l2d.bgImage";
 
 function readLS<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -129,11 +154,15 @@ function readLS<T>(key: string, fallback: T): T {
 export function PlaygroundProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [source, setSource] = useState<ActiveSource>(null);
+  const [extras, setExtras] = useState<ExtraCharacter[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [state, setState] = useState<ModelState>(defaultModelState);
   const [background, setBackground] = useState<Background>("grid");
   const [bgColor, setBgColor] = useState("#141a2a");
+  const [bgImageUrl, setBgImageUrl] = useState("");
+  const [bgImageFit, setBgImageFit] = useState<BgImageFit>("cover");
+  const [bgImageOpacity, setBgImageOpacity] = useState(1);
   const [debug, setDebug] = useState<DebugFlags>({
     showHitAreas: false,
     showBounds: false,
@@ -145,6 +174,12 @@ export function PlaygroundProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setRecent(readLS<string[]>(LS_RECENT, []));
     setFavorites(readLS<string[]>(LS_FAVORITES, []));
+    const saved = readLS<{ url: string; fit: BgImageFit; opacity: number } | null>(LS_BG_IMAGE, null);
+    if (saved) {
+      setBgImageUrl(saved.url ?? "");
+      setBgImageFit(saved.fit ?? "cover");
+      setBgImageOpacity(typeof saved.opacity === "number" ? saved.opacity : 1);
+    }
     loadAppConfig().then((c) => {
       setConfig(c);
       setBackground(c.defaultBackground);
@@ -162,6 +197,14 @@ export function PlaygroundProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(LS_FAVORITES, JSON.stringify(favorites));
     } catch {}
   }, [favorites]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        LS_BG_IMAGE,
+        JSON.stringify({ url: bgImageUrl, fit: bgImageFit, opacity: bgImageOpacity }),
+      );
+    } catch {}
+  }, [bgImageUrl, bgImageFit, bgImageOpacity]);
 
   const disposeCurrent = (s: ActiveSource) => {
     if (s?.kind === "files") {
@@ -191,6 +234,22 @@ export function PlaygroundProvider({ children }: { children: ReactNode }) {
         pushRecent(entry.id);
       },
       unload: () => setSource((prev) => (disposeCurrent(prev), null)),
+      extras,
+      addExtra: (entry) =>
+        setExtras((xs) => [
+          ...xs,
+          {
+            instanceId: `${entry.id}#${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+            entry,
+            scale: 0.2,
+            x: (xs.length + 1) * 120,
+            y: 0,
+          },
+        ]),
+      removeExtra: (instanceId) => setExtras((xs) => xs.filter((x) => x.instanceId !== instanceId)),
+      updateExtra: (instanceId, patch) =>
+        setExtras((xs) => xs.map((x) => (x.instanceId === instanceId ? { ...x, ...patch } : x))),
+      clearExtras: () => setExtras([]),
       activeName:
         source?.kind === "files"
           ? source.loaded.rootName
@@ -214,12 +273,32 @@ export function PlaygroundProvider({ children }: { children: ReactNode }) {
       setBackground,
       bgColor,
       setBgColor,
+      bgImageUrl,
+      setBgImageUrl,
+      bgImageFit,
+      setBgImageFit,
+      bgImageOpacity,
+      setBgImageOpacity,
       debug,
       setDebug,
       info,
       setInfo,
     };
-  }, [config, source, recent, favorites, state, background, bgColor, debug, info]);
+  }, [
+    config,
+    source,
+    extras,
+    recent,
+    favorites,
+    state,
+    background,
+    bgColor,
+    bgImageUrl,
+    bgImageFit,
+    bgImageOpacity,
+    debug,
+    info,
+  ]);
 
   return <PlaygroundCtx.Provider value={value}>{children}</PlaygroundCtx.Provider>;
 }
