@@ -4,6 +4,7 @@ import {
   Heart,
   List,
   Play,
+  Plus,
   RefreshCw,
   Search,
   Square,
@@ -51,7 +52,7 @@ export default function ModelSidebar({
   onOpenManager: (id: string) => void;
 }) {
   const { visibleModels, loading, refresh, hide } = useModelLibrary();
-  const { source, loadFromEntry, unload, favorites, toggleFavorite, recent, config } =
+  const { source, loadFromEntry, unload, favorites, toggleFavorite, recent, config, addExtra } =
     usePlayground();
 
   const [q, setQ] = useState("");
@@ -235,6 +236,10 @@ export default function ModelSidebar({
                 fav={favorites.includes(m.id)}
                 onLoad={() => loadFromEntry(m)}
                 onUnload={unload}
+                onAdd={() => {
+                  addExtra(m);
+                  toast.success(`Added ${m.modelName} to stage`);
+                }}
                 onFav={() => toggleFavorite(m.id)}
                 onOpen={() => onOpenManager(m.id)}
                 onDelete={() => {
@@ -256,6 +261,10 @@ export default function ModelSidebar({
                 active={activeId === m.id}
                 fav={favorites.includes(m.id)}
                 onLoad={() => loadFromEntry(m)}
+                onAdd={() => {
+                  addExtra(m);
+                  toast.success(`Added ${m.modelName} to stage`);
+                }}
                 onFav={() => toggleFavorite(m.id)}
                 onOpen={() => onOpenManager(m.id)}
                 onDelete={() => {
@@ -298,6 +307,7 @@ function Card({
   fav,
   onLoad,
   onUnload,
+  onAdd,
   onFav,
   onOpen,
   onDelete,
@@ -307,6 +317,7 @@ function Card({
   fav: boolean;
   onLoad: () => void;
   onUnload: () => void;
+  onAdd: () => void;
   onFav: () => void;
   onOpen: () => void;
   onDelete: () => void;
@@ -340,6 +351,15 @@ function Card({
           size="icon"
           variant="ghost"
           className="h-6 w-6"
+          onClick={onAdd}
+          title="Add to stage (multi-character)"
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6"
           onClick={onFav}
           title={fav ? "Unfavorite" : "Favorite"}
         >
@@ -365,6 +385,7 @@ function Row({
   active,
   fav,
   onLoad,
+  onAdd,
   onFav,
   onOpen,
   onDelete,
@@ -373,6 +394,7 @@ function Row({
   active: boolean;
   fav: boolean;
   onLoad: () => void;
+  onAdd: () => void;
   onFav: () => void;
   onOpen: () => void;
   onDelete: () => void;
@@ -392,13 +414,16 @@ function Row({
           C{m.cubismVersion} · {m.motionCount}m · {fmtBytes(m.totalBytes)} · {fmtRelativeTime(m.lastModified)}
         </div>
       </button>
-      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onFav}>
+      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onFav} title="Favorite">
         <Star className={`h-3 w-3 ${fav ? "fill-current text-primary" : ""}`} />
       </Button>
-      <Button size="icon" variant={active ? "secondary" : "ghost"} className="h-6 w-6" onClick={onLoad}>
+      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onAdd} title="Add to stage">
+        <Plus className="h-3 w-3" />
+      </Button>
+      <Button size="icon" variant={active ? "secondary" : "ghost"} className="h-6 w-6" onClick={onLoad} title="Load">
         <Play className="h-3 w-3" />
       </Button>
-      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onDelete}>
+      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={onDelete} title="Remove">
         <Trash2 className="h-3 w-3" />
       </Button>
     </div>
